@@ -5,10 +5,11 @@
 from datetime import datetime
 from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, select
+from flask_bcrypt import Bcrypt
 from sqlalchemy.orm import Session
 from models import Base, Product, User, Purchase,Sale,Sale_detail,Payment
-
 app = Flask(__name__)
+bcrypt = Bcrypt(app)
 
 # create a connection to the database using sqlalchemy
 engine = create_engine("sqlite:///./flask_duka_api.db", echo=True)
@@ -24,19 +25,6 @@ user = {"id": "1",
         "email": "bon@gmail.com",
         "password": "bonn0",
         }
-
-
-@app.before_request
-def before_request():
-    try:
-        print("A request is coming in")
-        new_user = User(user)
-        session.add(new_user)
-        session.commit()
-        return jsonify({"message": "User added successfully}"}), 201
-    except:
-        print("Error found")
-
 
 @app.route("/")
 def home():
@@ -210,7 +198,131 @@ def payments():
     else:
         error={"error" : "Method not allowed"}
         return jsonify(error),405
-    
+
+# USERS ROUTE
+@app.route("/users", methods=["GET"])
+def users():
+
+    # Get all users
+    users = session.scalars(
+        select(User)
+    ).all()
+
+    results = []
+
+    for user in users:
+        results.append({
+            "id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+        })
+
+    return jsonify(results), 200
+
+
+# REGISTER ROUTE
+@app.route("/register", methods=["GET", "POST"])
+def register():
+
+    if request.method == "GET":
+        return jsonify({
+            "Error": "Method not allowed"
+        }), 405
+
+    data = request.get_json()
+
+    # Check if fields are set
+    if (
+        not data
+        or not data.get("full_name")
+        or not data.get("email")
+        or not data.get("password")
+    ):
+        return jsonify({
+            "Error": "Ensure all fields are set"
+        }), 403
+
+    # Check if email exists
+    existing = session.scalars(
+        select(User).where(User.email == data["email"])
+    ).first()
+
+    if existing:
+        return jsonify({
+            "Error": "Email already exists"
+        }), 409
+
+    # Hash password
+    hashed_password = bcrypt.generate_password_hash(
+        data["password"]
+    ).decode("utf-8")
+
+    # Store data
+    new_user = User(
+        full_name=data["full_name"],
+        email=data["email"],
+        password=hashed_password
+    )
+
+    session.add(new_user)
+    session.commit()
+
+    return jsonify({
+        "id": new_user.id
+    }), 201
+
+
+
+# LOGIN ROUTE
+@app.route("/login", methods=["GET", "POST"])
+def login():
+
+    # 1. GET method not allowed
+    if request.method == "GET":
+        return jsonify({
+            "Error": "Method not allowed"
+        }), 405
+
+    # 2. Get data from request
+    data = request.get_json()
+
+    # 3. Check if email and password are provided
+    if (
+        not data
+        or not data.get("email")
+        or not data.get("password")
+    ):
+        return jsonify({
+            "Error": "Email and password are required"
+        }), 403
+
+    # 4. Find user using email
+    user = session.scalars(
+        select(User).where(User.email == data["email"])
+    ).first()
+
+    # 5. Check if user exists
+    if not user:
+        return jsonify({
+            "Error": "Invalid email or password"
+        }), 401
+
+    # 6. Check password
+    if not bcrypt.check_password_hash(
+        user.password,
+        data["password"]
+    ):
+        return jsonify({
+            "Error": "Invalid email or password"
+        }), 401
+
+    # 7. Login successful
+    return jsonify({
+        "message": "Login successful",
+        "id": user.id
+    }), 200
+
+
 
 
 app.run(debug=True)

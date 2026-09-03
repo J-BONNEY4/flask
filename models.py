@@ -70,3 +70,4 @@ class Payment(Base):
     trans_code:Mapped[str]=mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(30))
     created_at: Mapped[DateTime] = mapped_column(DateTime)
+
